@@ -1,0 +1,10 @@
+# Terraform files that should never be pushed
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+.build/
+
+# Lambda dependencies
+lambda_src/api_handler/node_modules/
+lambda_src/sqs_worker/node_modules/

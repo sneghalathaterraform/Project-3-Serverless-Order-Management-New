@@ -1,0 +1,14 @@
+# Terraform provider binaries and state
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/*.tfstate.*.backup
+terraform/.build/
+
+# Duplicate nested folder
+terraform/terraform/
+
+# Lambda node_modules
+terraform/lambda_src/**/node_modules/
+terraform/lambda_src/**/package-lock.json

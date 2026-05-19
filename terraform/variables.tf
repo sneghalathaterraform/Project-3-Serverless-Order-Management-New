@@ -13,7 +13,7 @@ variable "domain_name" {
 variable "project_name" {
   description = "Used as a prefix for all resource names"
   type        = string
-  default     = "Serverless-project-3"
+  default     = "serverless-project-3"
 }
 
 variable "environment" {
