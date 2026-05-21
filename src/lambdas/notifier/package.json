@@ -1,0 +1,9 @@
+{
+  "name": "notifier",
+  "version": "1.0.0",
+  "description": "SNS Notifier Lambda - sends customer emails via SES",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-ses": "^3.0.0"
+  }
+}
