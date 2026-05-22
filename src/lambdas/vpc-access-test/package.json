@@ -1,0 +1,7 @@
+{
+  "name": "vpc-access-test",
+  "version": "1.0.0",
+  "description": "Test Lambda to verify VPC endpoint isolation",
+  "main": "index.js",
+  "runtime": "nodejs22.x"
+}

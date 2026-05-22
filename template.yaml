@@ -23,6 +23,26 @@ Parameters:
       - prod
     Description: Deployment environment (dev or prod)
 
+  VpcId:
+    Type: String
+    Default: vpc-0ab2b78a4704c2008
+    Description: VPC ID for Lambda deployment
+    
+  PrivateSubnets:
+    Type: List<String>
+    Default: subnet-014abbdadb03267e2,subnet-08b52d934219ebe4b
+    Description: Private subnet IDs (comma-separated)
+    
+  S3DynamoDBGatewayEndpoint:
+    Type: String
+    Default: vpce-0d47353598bb80018
+    Description: VPC Gateway Endpoint for S3 and DynamoDB
+    
+  SNSSQSInterfaceEndpoint:
+    Type: String
+    Default: vpce-07b9e64df58f62a49
+    Description: VPC Interface Endpoint for SNS and SQS
+
 Resources:
   # ==================== DynamoDB TABLE ====================
   OrdersTable:
@@ -273,7 +293,33 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
         - !Ref LambdaPolicy
+
+  # ==================== VPC SECURITY GROUP ====================
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Lambda functions accessing VPC endpoints
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        # Allow outbound HTTPS for VPC endpoints
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS for VPC endpoints
+        # Allow outbound HTTP for VPC endpoints
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP for VPC endpoints
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-lambda-sg'
+        - Key: Environment
+          Value: !Ref Environment
 
   # ==================== API GATEWAY ====================
   ServerlessApi:
@@ -291,6 +337,10 @@ Resources:
       CodeUri: src/lambdas/api-handler/
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds: !Ref PrivateSubnets
       Environment:
         Variables:
           LOG_LEVEL: INFO
@@ -327,6 +377,10 @@ Resources:
       CodeUri: src/lambdas/worker/
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds: !Ref PrivateSubnets
       Timeout: 60
       MemorySize: 512
       Environment:
@@ -346,6 +400,10 @@ Resources:
       CodeUri: src/lambdas/notifier/
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds: !Ref PrivateSubnets
       Timeout: 30
       Environment:
         Variables:
