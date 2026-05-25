@@ -258,30 +258,6 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
-  # ==================== VPC ENDPOINTS ====================
-  DynamoDBEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref VpcId
-      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.dynamodb'
-      VpcEndpointType: Gateway
-      RouteTableIds:
-        - rtb-0e9e71aa25e33ff09
-        - rtb-0f7c0a0aebc18a303
-
-  SQSEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref VpcId
-      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.sqs'
-      VpcEndpointType: Interface
-      SubnetIds:
-        - !Ref PrivateSubnet1Id
-        - !Ref PrivateSubnet2Id
-      SecurityGroupIds:
-        - !GetAtt LambdaSecurityGroup.GroupId
-      PrivateDnsEnabled: true
-
   # ==================== IAM ROLES & POLICIES ====================
   LambdaPolicy:
     Type: AWS::IAM::ManagedPolicy
