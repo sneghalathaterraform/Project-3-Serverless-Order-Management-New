@@ -207,7 +207,6 @@ Resources:
     Properties:
       TopicName: !Sub '${Environment}-order-notifications'
       DisplayName: Order Notification Topic
-      KmsMasterKeyId: alias/aws/sns
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -221,7 +220,6 @@ Resources:
       QueueName: !Sub '${Environment}-order-processing-queue'
       VisibilityTimeout: 300
       MessageRetentionPeriod: 86400
-      KmsMasterKeyId: alias/aws/sqs
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt OrderDLQ.Arn
         maxReceiveCount: 3
@@ -233,7 +231,6 @@ Resources:
     Properties:
       QueueName: !Sub '${Environment}-order-processing-dlq'
       MessageRetentionPeriod: 1209600
-      KmsMasterKeyId: alias/aws/sqs
 
   # ==================== VPC SECURITY GROUP ====================
   LambdaSecurityGroup:
