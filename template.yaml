@@ -23,30 +23,29 @@ Parameters:
       - prod
     Description: Deployment environment (dev or prod)
 
+  # ===== EXISTING VPC RESOURCES (already created in console) =====
   VpcId:
     Type: String
     Default: vpc-0ab2b78a4704c2008
-    Description: VPC ID for Lambda deployment
-    
-  PrivateSubnets:
-    Type: List<String>
-    Default: subnet-014abbdadb03267e2,subnet-08b52d934219ebe4b
-    Description: Private subnet IDs (comma-separated)
-    
-  S3DynamoDBGatewayEndpoint:
+    Description: Existing Project-3-VPC-Endpoint VPC ID
+
+  PrivateSubnet1Id:
     Type: String
-    Default: vpce-0d47353598bb80018
-    Description: VPC Gateway Endpoint for S3 and DynamoDB
-    
-  SNSSQSInterfaceEndpoint:
+    Default: subnet-014abbdadb03267e2
+    Description: Private-subnet-1-Project-3 (us-east-1c)
+
+  PrivateSubnet2Id:
     Type: String
-    Default: vpce-07b9e64df58f62a49
-    Description: VPC Interface Endpoint for SNS and SQS
+    Default: subnet-08b52d934219ebe4b
+    Description: Private-subent-2-Project-3 (us-east-1b)
 
 Resources:
+
   # ==================== DynamoDB TABLE ====================
   OrdersTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: !Sub '${Environment}-orders'
       BillingMode: PAY_PER_REQUEST
@@ -80,10 +79,12 @@ Resources:
           Value: !Ref Environment
 
   # ==================== S3 BUCKETS ====================
-  # Logging bucket (required by S3_BUCKET_LOGGING_ENABLED rule)
   LoggingBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
+      BucketName: !Sub '${AWS::AccountId}-order-logs-${Environment}'
       VersioningConfiguration:
         Status: Enabled
       PublicAccessBlockConfiguration:
@@ -119,10 +120,12 @@ Resources:
               Bool:
                 'aws:SecureTransport': false
 
-  # Bucket for order images/attachments
   ImageBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
+      BucketName: !Sub '${AWS::AccountId}-order-images-${Environment}'
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
@@ -171,10 +174,12 @@ Resources:
               Bool:
                 'aws:SecureTransport': false
 
-  # Bucket for frontend React app
   FrontendBucket:
     Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
+      BucketName: !Sub '${AWS::AccountId}-order-app-frontend-${Environment}'
       WebsiteConfiguration:
         IndexDocument: index.html
         ErrorDocument: index.html
@@ -200,6 +205,7 @@ Resources:
   OrderNotificationTopic:
     Type: AWS::SNS::Topic
     Properties:
+      TopicName: !Sub '${Environment}-order-notifications'
       DisplayName: Order Notification Topic
       KmsMasterKeyId: alias/aws/sns
       Tags:
@@ -207,10 +213,12 @@ Resources:
           Value: !Ref Environment
 
   # ==================== SQS QUEUES ====================
-  # Main order processing queue
   OrderQueue:
     Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
+      QueueName: !Sub '${Environment}-order-processing-queue'
       VisibilityTimeout: 300
       MessageRetentionPeriod: 86400
       KmsMasterKeyId: alias/aws/sqs
@@ -218,18 +226,38 @@ Resources:
         deadLetterTargetArn: !GetAtt OrderDLQ.Arn
         maxReceiveCount: 3
 
-  # Dead Letter Queue for failed messages
   OrderDLQ:
     Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
+      QueueName: !Sub '${Environment}-order-processing-dlq'
       MessageRetentionPeriod: 1209600
       KmsMasterKeyId: alias/aws/sqs
 
+  # ==================== VPC SECURITY GROUP ====================
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Lambda functions inside VPC
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTPS outbound to VPC endpoints
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-lambda-sg'
+        - Key: Environment
+          Value: !Ref Environment
+
   # ==================== IAM ROLES & POLICIES ====================
-  # Separate managed policy instead of inline (IAM_NO_INLINE_POLICY_CHECK)
   LambdaPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
+      ManagedPolicyName: !Sub '${Environment}-lambda-execution-policy'
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -280,6 +308,15 @@ Resources:
               - ses:SendEmail
               - ses:SendRawEmail
             Resource: '*'
+          - Sid: VPCAccess
+            Effect: Allow
+            Action:
+              - ec2:CreateNetworkInterface
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DeleteNetworkInterface
+              - ec2:AssignPrivateIpAddresses
+              - ec2:UnassignPrivateIpAddresses
+            Resource: '*'
 
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -296,31 +333,6 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
         - !Ref LambdaPolicy
 
-  # ==================== VPC SECURITY GROUP ====================
-  LambdaSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for Lambda functions accessing VPC endpoints
-      VpcId: !Ref VpcId
-      SecurityGroupEgress:
-        # Allow outbound HTTPS for VPC endpoints
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-          Description: HTTPS for VPC endpoints
-        # Allow outbound HTTP for VPC endpoints
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-          Description: HTTP for VPC endpoints
-      Tags:
-        - Key: Name
-          Value: !Sub '${Environment}-lambda-sg'
-        - Key: Environment
-          Value: !Ref Environment
-
   # ==================== API GATEWAY ====================
   ServerlessApi:
     Type: AWS::Serverless::Api
@@ -334,13 +346,16 @@ Resources:
   ApiHandlerFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub '${Environment}-api-handler'
       CodeUri: src/lambdas/api-handler/
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
       VpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnet1Id
+          - !Ref PrivateSubnet2Id
         SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
-        SubnetIds: !Ref PrivateSubnets
+          - !GetAtt LambdaSecurityGroup.GroupId
       Environment:
         Variables:
           LOG_LEVEL: INFO
@@ -370,19 +385,22 @@ Resources:
             Path: /upload-url
             Method: POST
 
-  # 2. WORKER LAMBDA (Process Orders from SQS)
+  # 2. WORKER LAMBDA (triggered by SQS, runs inside VPC)
   WorkerFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub '${Environment}-order-worker'
       CodeUri: src/lambdas/worker/
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
-        SubnetIds: !Ref PrivateSubnets
       Timeout: 60
       MemorySize: 512
+      VpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnet1Id
+          - !Ref PrivateSubnet2Id
+        SecurityGroupIds:
+          - !GetAtt LambdaSecurityGroup.GroupId
       Environment:
         Variables:
           LOG_LEVEL: INFO
@@ -392,18 +410,17 @@ Resources:
           Properties:
             Queue: !GetAtt OrderQueue.Arn
             BatchSize: 10
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
 
-  # 3. NOTIFIER LAMBDA (Send notifications from SNS)
+  # 3. NOTIFIER LAMBDA (triggered by SNS, sends email via SES)
   NotifierFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub '${Environment}-order-notifier'
       CodeUri: src/lambdas/notifier/
       Handler: index.handler
       Role: !GetAtt LambdaExecutionRole.Arn
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
-        SubnetIds: !Ref PrivateSubnets
       Timeout: 30
       Environment:
         Variables:
@@ -467,7 +484,10 @@ Resources:
             - GET
             - HEAD
             - OPTIONS
-          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https
         CacheBehaviors:
@@ -480,7 +500,16 @@ Resources:
               - POST
               - PATCH
               - DELETE
-            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            ForwardedValues:
+              QueryString: true
+              Headers:
+                - Authorization
+                - Content-Type
+              Cookies:
+                Forward: none
+            DefaultTTL: 0
+            MinTTL: 0
+            MaxTTL: 0
             TargetOriginId: ApiOrigin
             ViewerProtocolPolicy: https-only
 
@@ -520,6 +549,18 @@ Outputs:
     Value: !Ref OrderNotificationTopic
     Export:
       Name: !Sub '${Environment}-SNSTopic'
+
+  VpcIdOutput:
+    Description: VPC used by Lambda functions
+    Value: !Ref VpcId
+    Export:
+      Name: !Sub '${Environment}-VpcId'
+
+  LambdaSecurityGroupId:
+    Description: Security Group for Lambda functions in VPC
+    Value: !GetAtt LambdaSecurityGroup.GroupId
+    Export:
+      Name: !Sub '${Environment}-LambdaSecurityGroup'
 
   ApiHandlerFunctionArn:
     Description: API Handler Lambda Function ARN
