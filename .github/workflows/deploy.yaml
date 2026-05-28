@@ -33,38 +33,16 @@ jobs:
         aws s3 mb s3://sam-deploy-462096274659-us-east-1 \
           --region us-east-1 || true
 
-    - name: Delete Existing SQS Queues
-      run: |
-        QUEUES=$(aws sqs list-queues --region us-east-1 \
-          --query "QueueUrls[]" --output text 2>/dev/null || echo "")
-        if [ -n "$QUEUES" ]; then
-          for url in $QUEUES; do
-            # Only delete queues related to project-3-order-management
-            if [[ "$url" == *"project-3-order-management"* ]] || \
-               [[ "$url" == *"OrderDLQ"* ]] || \
-               [[ "$url" == *"OrderQueue"* ]]; then
-              echo "Deleting queue: $url"
-              aws sqs delete-queue --queue-url "$url" --region us-east-1 || true
-            else
-              echo "Skipping queue: $url"
-            fi
-          done
-          echo "Waiting 60 seconds for SQS cooldown..."
-          sleep 60
-        else
-          echo "No queues found, skipping..."
-        fi
-
-    - name: Delete Failed Stack if Exists
+    - name: Delete Existing Stack
       run: |
         STATUS=$(aws cloudformation describe-stacks \
           --stack-name project-3-order-management \
           --region us-east-1 \
           --query "Stacks[0].StackStatus" \
           --output text 2>/dev/null || echo "DOES_NOT_EXIST")
-        echo "Stack status: $STATUS"
-        if [[ "$STATUS" == "ROLLBACK_COMPLETE" || "$STATUS" == "CREATE_FAILED" ]]; then
-          echo "Deleting failed stack..."
+        echo "Current stack status: $STATUS"
+        if [[ "$STATUS" != "DOES_NOT_EXIST" ]]; then
+          echo "Deleting stack..."
           aws cloudformation delete-stack \
             --stack-name project-3-order-management \
             --region us-east-1
@@ -72,6 +50,8 @@ jobs:
             --stack-name project-3-order-management \
             --region us-east-1
           echo "Stack deleted successfully"
+        else
+          echo "No stack found, skipping..."
         fi
 
     - name: SAM Build
