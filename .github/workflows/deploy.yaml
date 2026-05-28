@@ -35,15 +35,20 @@ jobs:
 
     - name: Delete Existing SQS Queues
       run: |
-        QUEUES=$(aws sqs list-queues --region us-east-1 --query "QueueUrls[]" --output text)
-        for url in $QUEUES; do
-          echo "Deleting queue: $url"
-          aws sqs delete-queue --queue-url "$url" --region us-east-1 || true
-        done
-        echo "Waiting 60 seconds for SQS cooldown..."
-        sleep 60
+        QUEUES=$(aws sqs list-queues --region us-east-1 \
+          --query "QueueUrls[]" --output text 2>/dev/null || echo "")
+        if [ -n "$QUEUES" ]; then
+          for url in $QUEUES; do
+            echo "Deleting queue: $url"
+            aws sqs delete-queue --queue-url "$url" --region us-east-1 || true
+          done
+          echo "Waiting 60 seconds for SQS cooldown..."
+          sleep 60
+        else
+          echo "No queues found, skipping..."
+        fi
 
-    - name: Delete Existing Stack if Failed
+    - name: Delete Failed Stack if Exists
       run: |
         STATUS=$(aws cloudformation describe-stacks \
           --stack-name project-3-order-management \
@@ -59,6 +64,7 @@ jobs:
           aws cloudformation wait stack-delete-complete \
             --stack-name project-3-order-management \
             --region us-east-1
+          echo "Stack deleted successfully"
         fi
 
     - name: SAM Build
@@ -67,8 +73,13 @@ jobs:
     - name: SAM Deploy
       run: |
         sam deploy \
+          --stack-name project-3-order-management \
+          --s3-bucket sam-deploy-462096274659-us-east-1 \
+          --s3-prefix project-3-order-management \
+          --capabilities "CAPABILITY_IAM" "CAPABILITY_NAMED_IAM" \
           --no-confirm-changeset \
           --no-fail-on-empty-changeset \
+          --region us-east-1 \
           --parameter-overrides \
             Environment=dev \
             VpcId=${{ secrets.VPC_ID }} \
