@@ -39,8 +39,15 @@ jobs:
           --query "QueueUrls[]" --output text 2>/dev/null || echo "")
         if [ -n "$QUEUES" ]; then
           for url in $QUEUES; do
-            echo "Deleting queue: $url"
-            aws sqs delete-queue --queue-url "$url" --region us-east-1 || true
+            # Only delete queues related to project-3-order-management
+            if [[ "$url" == *"project-3-order-management"* ]] || \
+               [[ "$url" == *"OrderDLQ"* ]] || \
+               [[ "$url" == *"OrderQueue"* ]]; then
+              echo "Deleting queue: $url"
+              aws sqs delete-queue --queue-url "$url" --region us-east-1 || true
+            else
+              echo "Skipping queue: $url"
+            fi
           done
           echo "Waiting 60 seconds for SQS cooldown..."
           sleep 60
